@@ -1,7 +1,6 @@
 # pi-headed-browser
 
 [![CI](https://github.com/Danu28/pi-headed-browser/actions/workflows/ci/badge.svg)](https://github.com/Danu28/pi-headed-browser/actions/workflows/ci)
-[![npm version](https://img.shields.io/npm/v/pi-headed-browser)](https://www.npmjs.com/package/pi-headed-browser)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 Pi extension that drives a **headed Chromium window (Playwright)** with small, composable tools that work well inside **codemode**. Real-user scrolling, hover dwell, and visible-only reads — designed for AI agents and human-in-the-loop automation.
@@ -18,11 +17,11 @@ Pi extension that drives a **headed Chromium window (Playwright)** with small, c
 ## Install
 
 ```bash
-npm install pi-headed-browser
+pi install git:github.com/Danu28/pi-headed-browser
 npx playwright install chromium
 ```
 
-Requires **Node >=18**.
+Requires **Node >=18** and [pi](https://pi.dev) (`npm i -g @earendil-works/pi-coding-agent` or `https://pi.dev/install.sh`). No npm publish needed — pi clones the repo and installs its dependencies (`playwright`).
 
 If Windows Application Control blocks Playwright's bundled Chromium, point at an existing build:
 
@@ -36,13 +35,16 @@ export PI_BROWSER_EXECUTABLE="$HOME/AppData/Local/ms-playwright/chromium-1243/ch
 ## Usage with pi
 
 ```bash
-# dev (TypeScript)
-pi --extension ./src/index.ts
+# after install (recommended)
+pi
+# tools are available in every session — no --extension flag needed
 
-# after build / from npm
+# try without installing (one invocation)
+pi --extension ./src/index.ts
+pi -e git:github.com/Danu28/pi-headed-browser
+
+# from a local clone during development
 pi --extension ./dist/index.js
-# or if published
-pi --extension pi-headed-browser
 ```
 
 ### Quick start (inside pi codemode)
