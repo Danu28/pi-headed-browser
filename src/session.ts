@@ -1,7 +1,7 @@
 import { chromium, type BrowserContext, type FrameLocator, type Page, type Frame } from "playwright";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -16,6 +16,12 @@ let context: BrowserContext | undefined;
 // The page tools act on. Follows newly opened tabs (target=_blank, window.open).
 let activePage: Page | undefined;
 let opening: Promise<BrowserContext> | undefined;
+
+// --- Extension support ---
+let extensionPaths: string[] = [];
+let extensionIds: Map<string, string> = new Map();
+export function getExtensionPaths(): string[] { return [...extensionPaths]; }
+export function getExtensionIds(): Record<string,string> { return Object.fromEntries(extensionIds); }
 
 // Dialogs (alert/confirm/prompt) are recorded and answered. Tools report them via drainDialogs().
 export type DialogAction = "accept" | "dismiss";
@@ -39,12 +45,16 @@ function attachDialogs(page: Page) {
 async function ensureContext(): Promise<BrowserContext> {
   if (context) return context;
   if (!opening) {
+    const extArgs = extensionPaths.length
+      ? [`--disable-extensions-except=${extensionPaths.join(",")}`, `--load-extension=${extensionPaths.join(",")}`]
+      : [];
+    const isHeadedWithExt = extensionPaths.length > 0;
     opening = chromium
       .launchPersistentContext(PROFILE_DIR, {
-        headless: process.env.HEADLESS === "true" || !!process.env.CI,
+        headless: isHeadedWithExt ? false : (process.env.HEADLESS === "true" || !!process.env.CI),
         executablePath: EXECUTABLE,
         viewport: { width: 1280, height: 800 },
-        args: ["--no-first-run", "--no-default-browser-check"],
+        args: ["--no-first-run", "--no-default-browser-check", ...extArgs],
       })
       .then((ctx) => {
         context = ctx;
@@ -93,5 +103,54 @@ export async function frameFor(page: Page, frame: string): Promise<Frame> {
 export async function closeBrowser(): Promise<void> {
   const ctx = context;
   context = undefined;
+  activePage = undefined;
   await ctx?.close().catch(() => {});
+}
+export async function loadExtension(extPath: string): Promise<{ id: string, path: string }> {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const abs = path.resolve(extPath);
+  if(!fs.existsSync(abs)) throw new Error("extension path not found: "+abs+" — tip: use absolute path like C:/Users/.../extension");
+  if(!fs.existsSync(path.join(abs, "manifest.json"))) throw new Error("manifest.json not found in "+abs+" — is this an unpacked extension dir?");
+  const existing = extensionIds.get(abs);
+  if(existing && extensionPaths.includes(abs)){
+    return { id: existing, path: abs }; // idempotent - AI can call repeatedly
+  }
+  if(!extensionPaths.includes(abs)) extensionPaths.push(abs);
+  // restart context to load extension (required by Chromium)
+  if(context) await closeBrowser();
+  await new Promise(r=>setTimeout(r, 800));
+  const ctx = await ensureContext();
+  // discover extension id via service worker / background page URL
+  let id = "";
+  for(let i=0;i<15;i++){
+    const workers = ctx.serviceWorkers();
+    const pages = ctx.backgroundPages();
+    const all = [...workers.map(w=>w.url()), ...pages.map(p=>p.url())];
+    const hit = all.find(u=>u.startsWith("chrome-extension://"));
+    if(hit){ const m=hit.match(/chrome-extension:\/\/([^\/]+)/); if(m) id=m[1]; break; }
+    // also try to find via chrome://extensions page (fallback)
+    await new Promise(r=>setTimeout(r, 400));
+  }
+  // fallback: if id still empty, open extensions page to discover
+  if(!id){
+    try{
+      const pg = await getPage();
+      await pg.goto("chrome://extensions", { waitUntil: "domcontentloaded", timeout: 8000 }).catch(()=>{});
+      await new Promise(r=>setTimeout(r, 1000));
+      const workers2 = ctx.serviceWorkers();
+      const hit2 = workers2.map(w=>w.url()).find(u=>u.startsWith("chrome-extension://"));
+      if(hit2){ const m=hit2.match(/chrome-extension:\/\/([^\/]+)/); if(m) id=m[1]; }
+    }catch{}
+  }
+  if(id) extensionIds.set(abs, id);
+  return { id: id || "pending", path: abs };
+}
+export async function unloadExtension(extPath?: string): Promise<void> {
+  if(extPath){ const path = await import("node:path"); const abs=path.resolve(extPath); extensionPaths=extensionPaths.filter(p=>p!==abs); extensionIds.delete(abs); }
+  else { extensionPaths=[]; extensionIds.clear(); }
+  if(context) await closeBrowser();
+}
+export function getExtensionIdForPath(p: string): string | undefined {
+  try{ return extensionIds.get(resolve(p)); }catch{ return undefined; }
 }
