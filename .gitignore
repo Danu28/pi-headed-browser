@@ -5,6 +5,7 @@ build/
 
 # browser state (never commit)
 .profile/
+.profile2/
 .profile-test/
 screenshots/
 playwright-report/

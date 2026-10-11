@@ -3,7 +3,9 @@ import type { Locator, Page } from "playwright";
 import { Type } from "typebox";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
-import { getPage, closeBrowser, SHOT_DIR, setDialogAction, drainDialogs, scope, frameFor } from "./session.js";
+import { getPage, closeBrowser, SHOT_DIR, setDialogAction, drainDialogs, scope, frameFor, loadExtension, unloadExtension, getExtensionPaths, getExtensionIds } from "./session.js";
+
+declare const chrome: any;
 
 const MAX_CHARS = 2000;
 const TIMEOUT = 10000;
@@ -163,6 +165,7 @@ function registerBrowserTool(pi: ExtensionAPI, def: BrowserToolDef) {
     },
   });
 }
+
 
 export default function browserExtension(pi: ExtensionAPI) {
   registerBrowserTool(pi, {
@@ -627,6 +630,159 @@ export default function browserExtension(pi: ExtensionAPI) {
       await page.evaluate((d) => window.scrollBy({ top: d, behavior: "smooth" }), dir * amt);
       await humanDelay(400, 700);
       return "scrolled " + (dir === -1 ? "up" : "down") + " " + amt + "px [real-user]\n" + (await state(page));
+    },
+  });
+
+
+  registerBrowserTool(pi, {
+    name: "browser_load_extension", label: "Load Extension", promptSnippet: "Load an unpacked Chrome extension",
+    description: "Load an unpacked Chrome extension (MV2/MV3) and restart the headed browser with --load-extension. Extensions require headed mode. Returns extensionId and popup URL. Path must contain manifest.json.",
+    parameters: Type.Object({
+      path: Type.String({ description: "Absolute or relative path to unpacked extension dir (must contain manifest.json). Example: ./my-extension" }),
+    }),
+    run: async (p: any) => {
+      const { resolve } = await import("node:path");
+      const abs = resolve(p.path);
+      const res: any = await loadExtension(abs);
+      const page = await getPage();
+      await new Promise(r=>setTimeout(r, 1200));
+      if(!res.id || res.id==="pending") return "extension loaded (pending id): " + abs + " - open chrome://extensions to see id, or try browser_list_extensions\n" + await state(page);
+      const popupUrl = "chrome-extension://"+res.id+"/popup.html";
+      return "extension loaded: " + abs + "\nid: " + res.id + "\npopup: " + popupUrl + "\n" + await state(page);
+    },
+  });
+
+  registerBrowserTool(pi, {
+    name: "browser_list_extensions", label: "List Extensions", promptSnippet: "List loaded extensions",
+    description: "List loaded extensions (path -> id).",
+    parameters: Type.Object({}),
+    run: async () => {
+      const ids: any = getExtensionIds();
+      const paths: any = getExtensionPaths();
+      if(!paths.length) return "no extensions loaded. Use browser_load_extension first.";
+      return paths.map((pp: string)=> pp + " -> " + (ids[pp]||"pending")).join("\n");
+    },
+  });
+
+  registerBrowserTool(pi, {
+    name: "browser_open_extension_popup", label: "Open Extension Popup", promptSnippet: "Open an extension popup",
+    description: "Open an extension popup (chrome-extension://<id>/popup.html) in a new tab for AI to drive. Pass path (same as load) or id.",
+    parameters: Type.Object({
+      path: Type.Optional(Type.String({ description: "Extension dir path (same as browser_load_extension)" })),
+      id: Type.Optional(Type.String({ description: "Extension id (chrome-extension://<id>)" })),
+    }),
+    run: async (p: any) => {
+      const { resolve } = await import("node:path");
+      let extId: string | undefined = p.id;
+      if(!extId && p.path){ const ids:any=getExtensionIds(); extId=ids[resolve(p.path)]; }
+      if(!extId) extId = Object.values(getExtensionIds() as any)[0] as string;
+      if(!extId) throw new Error("no extension id found. Load extension first, or pass id.");
+      const url = "chrome-extension://"+extId+"/popup.html";
+      const page = await getPage();
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 }).catch(async (e: any)=>{ throw new Error("failed to open popup "+url+": "+e.message); });
+      await settlePage(page);
+      return "popup opened: " + url + "\n" + await state(page);
+    },
+  });
+
+  registerBrowserTool(pi, {
+    name: "browser_unload_extension", label: "Unload Extension", promptSnippet: "Unload extension",
+    description: "Unload extension(s) and restart browser without it. Pass path to unload one, or no args to unload all.",
+    parameters: Type.Object({ path: Type.Optional(Type.String({ description: "Path to extension to unload. Omit to unload all." })) }),
+    run: async (p: any) => {
+      await unloadExtension(p.path);
+      return "extension(s) unloaded" + (p.path?" : "+p.path : " (all)") + ". Browser restarted.";
+    },
+  });
+
+
+  registerBrowserTool(pi, {
+    name: "browser_extension_state",
+    label: "Extension State",
+    promptSnippet: "Get extension storage state (pages/apis/actions) without opening popup - for AI verification",
+    description: "Get coverage extension state (pages, apis, flows, actions, summary) via chrome.runtime message. No popup needed. Works headed+headless after load.",
+    parameters: Type.Object({
+      path: Type.Optional(Type.String({ description: "Extension dir path to get id from (if omitted, uses first loaded)" })),
+      id: Type.Optional(Type.String({ description: "Extension id override" })),
+    }),
+    run: async (p: any) => {
+      const { resolve } = await import("node:path");
+      let extId: string | undefined = p.id;
+      if(!extId && p.path){ const ids:any=getExtensionIds(); extId=ids[resolve(p.path)]; }
+      if(!extId) extId = Object.values(getExtensionIds() as any)[0] as string;
+      if(!extId) throw new Error("no extension loaded. Use browser_load_extension first.");
+      // Use background service worker evaluation via page
+      const page = await getPage();
+      // Try via popup page first, fallback to service worker url fetch
+      try{
+        const popupUrl = "chrome-extension://"+extId+"/popup.html";
+        // create a temporary page to query background
+        const tmp = await (await import("./session.js")).getPage();
+        // Evaluate in extension context: send message to background
+        const stateJson = await tmp.evaluate(async (extIdInner: string) => {
+          return await new Promise<string>((res, rej) => {
+            try{
+              // @ts-ignore
+              chrome.runtime.sendMessage({type: 'GET_STATE'}, (reply: any) => {
+                if(chrome.runtime.lastError) res(JSON.stringify({error: chrome.runtime.lastError.message}));
+                else res(JSON.stringify(reply ?? {}));
+              });
+            }catch(e:any){ res(JSON.stringify({error: e.message})); }
+          });
+        }, extId).catch(async ()=>{
+          // fallback: try via fetch to background? Use page goto popup
+          return "";
+        });
+        if(stateJson && stateJson.length>10 && !stateJson.includes('"error"')){
+          const j = JSON.parse(stateJson);
+          const summary = j.summary ?? {pageCount: j.pages?.length, apiCount: j.apis?.length};
+          return "state: " + JSON.stringify({schema:j.schema, project:j.project, summary, pages:j.pages?.slice(0,2).map((pp:any)=>pp.url), actions: j.actions?.slice(0,3).map((a:any)=>a.type+':'+a.label)}, null, 2) + "\nfull length " + stateJson.length;
+        }
+      }catch{}
+      // Fallback: open popup and read
+      try{
+        const popupUrl = "chrome-extension://"+extId+"/popup.html";
+        const pg = await getPage();
+        await pg.goto(popupUrl, {waitUntil:"domcontentloaded", timeout:5000});
+        const st = await pg.evaluate(async ()=>{
+          return await new Promise<string>(res=>{
+            // @ts-ignore
+            chrome.runtime.sendMessage({type:'GET_STATE'}, (r:any)=> res(JSON.stringify(r)));
+          });
+        });
+        return "state (via popup): " + st.slice(0,1500);
+      }catch(e:any){
+        throw new Error("failed to get extension state: "+e.message+" — try browser_open_extension_popup first");
+      }
+    },
+  });
+
+  registerBrowserTool(pi, {
+    name: "browser_extension_eval",
+    label: "Extension Eval",
+    promptSnippet: "Run JS in extension context",
+    description: "Run JS in extension popup/background context (e.g. chrome.runtime.sendMessage). Use to trigger Start/Stop/Reset without clicking. Script must return JSON-serializable.",
+    parameters: Type.Object({
+      script: Type.String({ description: "JS body, e.g. \"return await new Promise(r=> chrome.runtime.sendMessage({type:'GET_STATE'}, r))\"" }),
+      target: Type.Optional(Type.Union([Type.Literal("popup"), Type.Literal("background")], { description: "default popup" })),
+      path: Type.Optional(Type.String({ description: "Extension path for id lookup" })),
+      id: Type.Optional(Type.String({ description: "Extension id" })),
+    }),
+    run: async (p: any) => {
+      const { resolve } = await import("node:path");
+      let extId: string | undefined = p.id;
+      if(!extId && p.path){ const ids:any=getExtensionIds(); extId=ids[resolve(p.path)]; }
+      if(!extId) extId = Object.values(getExtensionIds() as any)[0] as string;
+      if(!extId) throw new Error("no extension loaded");
+      const page = await getPage();
+      const url = "chrome-extension://"+extId+"/"+(p.target==="background" ? "background.js" : "popup.html");
+      // Ensure popup loaded
+      if(p.target!=="background"){
+        await page.goto("chrome-extension://"+extId+"/popup.html", {waitUntil:"domcontentloaded", timeout:5000}).catch(()=>{});
+      }
+      const body = "(async () => {\n" + p.script + "\n})()";
+      const val = await page.evaluate(body);
+      return clip(JSON.stringify(val) ?? "undefined");
     },
   });
 
