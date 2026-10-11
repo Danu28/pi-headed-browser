@@ -1,6 +1,6 @@
 # pi-headed-browser
 
-[![CI](https://github.com/Danu28/pi-headed-browser/actions/workflows/ci/badge.svg)](https://github.com/Danu28/pi-headed-browser/actions/workflows/ci)
+[![CI](https://github.com/Danu28/pi-headed-browser/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Danu28/pi-headed-browser/actions)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 Pi extension that drives a **headed Chromium window (Playwright)** with small, composable tools that work well inside **codemode**. Real-user scrolling, hover dwell, and visible-only reads — designed for AI agents and human-in-the-loop automation.
