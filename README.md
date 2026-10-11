@@ -7,7 +7,7 @@ Pi extension that drives a **headed Chromium window (Playwright)** with small, c
 
 ## Features
 
-- **14 tools** — open/goto, find/list, click/type/press/check/select, extract/read/eval, wait/upload/dialog/screenshot/scroll
+- **23 tools** — 17 core (open/goto, find/list, click/type/press/check/select, extract/read/eval, wait/upload/dialog/screenshot/scroll) + 6 extension (load/list/open-popup/unload/state/eval)
 - **Real-user mode** — smooth `scrollIntoView`, 200-400ms hover dwell, 80-700ms random delays, `pressSequentially` typing
 - **Frames & Shadow DOM** — `frame: "iframe#a >> iframe#b"` and open shadow-root piercing
 - **Nth disambiguation** — never acts on the wrong element silently
@@ -107,6 +107,12 @@ text(await tools.browser_find({})); // marks shadow controls with (shadow)
 | `browser_screenshot` | Save PNG under `screenshots/` | `name?, fullPage?` |
 | `browser_eval` | Run JS in page/frame, return JSON | `script, frame?` |
 | `browser_scroll` | Human scroll (smooth) or scrollIntoView | `direction?, amount?, selector?, nth?, frame?` |
+| `browser_load_extension` | Load unpacked MV2/MV3 (restarts headed) | `path` |
+| `browser_list_extensions` | List loaded extensions path→id | `` |
+| `browser_open_extension_popup` | Open `chrome-extension://<id>/popup.html` | `path? / id?` |
+| `browser_unload_extension` | Unload one or all extensions | `path?` |
+| `browser_extension_state` | Get storage state via `chrome.runtime` (no popup) | `path? / id?` |
+| `browser_extension_eval` | Run JS in extension popup/background | `script, target?, path? / id?` |
 
 Selectors: CSS, or Playwright `text=Go`, `role=button[name="Save"]`. If a selector matches multiple elements, the tool errors with the count — pass `nth` (0-based) or use `browser_find`/`browser_list` to get a unique one.
 
@@ -126,7 +132,7 @@ npx playwright install chromium
 npm run typecheck
 npm run build
 npm test                 # smoke test (headed)
-npm run test:all         # smoke + generic + list + shadow + real-user
+npm run test:all         # 4 suites (01-core, 02-interaction, 03-inspection, 04-extension) — 1 test per tool
 ```
 
 Isolate test profile so you don't clash with a running `pi` session:
@@ -140,7 +146,7 @@ Tests that hit live sites (e.g. `test/selectorshub.ts`) need network.
 ## How it works
 
 - `src/session.ts` — launches `chromium.launchPersistentContext`, follows new tabs, captures dialogs, resolves `frame >> chain`, manages `.profile`
-- `src/index.ts` — registers 14+ tools on pi's `ExtensionAPI`; real-user helpers (`scrollIntoViewIfNeeded`, `hoverWithDelay`, `humanDelay`, `settlePage`); fail-fast `assertUsable` with actionable hints
+- `src/index.ts` — registers 23 tools on pi's `ExtensionAPI`; real-user helpers (`scrollIntoViewIfNeeded`, `hoverWithDelay`, `humanDelay`, `settlePage`); fail-fast `assertUsable` with actionable hints
 
 ## License
 
