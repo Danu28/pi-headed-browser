@@ -1,0 +1,27 @@
+# deps
+node_modules/
+dist/
+build/
+
+# browser state (never commit)
+.profile/
+.profile-test/
+screenshots/
+playwright-report/
+test-results/
+
+# logs & env
+*.log
+npm-debug.log*
+.env
+.env.local
+coverage/
+.nyc_output/
+
+# editor & os
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

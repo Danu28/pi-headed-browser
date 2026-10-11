@@ -1,0 +1,12 @@
+<title>Shadow</title>
+<div id="a"></div><div id="b"></div><div id="closed"></div>
+<script>
+const s1 = document.getElementById('a').attachShadow({mode:'open'});
+s1.innerHTML = "<input id='open-in' placeholder='open'><div id='nest'></div>";
+const n = s1.getElementById('nest').attachShadow({mode:'open'});
+n.innerHTML = "<button id='deep' onclick=\"document.title='deep clicked'\">deep</button>";
+const s2 = document.getElementById('b').attachShadow({mode:'open'});
+s2.innerHTML = "<button onclick=\"document.title='b1'\">one</button><button onclick=\"document.title='b2'\">two</button>";
+const c = document.getElementById('closed').attachShadow({mode:'closed'});
+c.innerHTML = "<input id='closed-in'>";
+</script>

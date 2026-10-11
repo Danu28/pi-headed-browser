@@ -1,0 +1,6 @@
+<title>Nested</title>
+<div role='button' id='cat' aria-expanded='false' onclick="const p=document.getElementById('catp');p.hidden=!p.hidden;this.setAttribute('aria-expanded',String(!p.hidden))">Category</div>
+<div id='catp' hidden>
+<div role='button' id='q' aria-expanded='false' onclick="document.getElementById('qa').hidden=false;this.setAttribute('aria-expanded','true')">How do I pick?</div>
+<div id='qa' hidden>Pick a plan here.</div>
+</div>
