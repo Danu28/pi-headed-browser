@@ -58,6 +58,8 @@ async function ensureContext(): Promise<BrowserContext> {
       })
       .then((ctx) => {
         context = ctx;
+        // Shim for esbuild __name helper injected into evaluate callbacks (tsx keepNames)
+        ctx.addInitScript(() => { (window as any).__name = (window as any).__name || ((fn:any)=>fn); }).catch(()=>{});
         ctx.pages().forEach(attachDialogs);
         ctx.on("page", (p) => {
           attachDialogs(p);

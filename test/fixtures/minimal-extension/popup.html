@@ -1,0 +1,13 @@
+<!doctype html>
+<title>Minimal Popup</title>
+<h1 id="title">Minimal Extension</h1>
+<button id="btn" onclick="document.getElementById('out').textContent='clicked'">Click Me</button>
+<div id="out"></div>
+<script>
+  // For extension_state test - respond to GET_STATE
+  if (typeof chrome !== 'undefined' && chrome.runtime) {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (msg && msg.type === 'GET_STATE') { sendResponse({schema:'test', project:'minimal', pages:[{url:'popup'}], actions:[{type:'click', label:'btn'}], summary:{pageCount:1}}); return true; }
+    });
+  }
+</script>

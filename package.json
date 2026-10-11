@@ -22,9 +22,9 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/smoke.ts",
-    "test:all": "tsx test/smoke.ts && tsx test/generic.ts && tsx test/list.ts && tsx test/shadow.ts && tsx test/real-user.ts",
-    "test:smoke": "tsx test/smoke.ts",
+    "test": "tsx test/01-core-navigation.ts",
+    "test:all": "tsx test/01-core-navigation.ts && tsx test/02-interaction.ts && tsx test/03-inspection.ts && tsx test/04-extension.ts",
+    "test:smoke": "tsx test/01-core-navigation.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
