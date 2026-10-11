@@ -41,7 +41,7 @@ async function ensureContext(): Promise<BrowserContext> {
   if (!opening) {
     opening = chromium
       .launchPersistentContext(PROFILE_DIR, {
-        headless: false,
+        headless: process.env.HEADLESS === "true" || !!process.env.CI,
         executablePath: EXECUTABLE,
         viewport: { width: 1280, height: 800 },
         args: ["--no-first-run", "--no-default-browser-check"],

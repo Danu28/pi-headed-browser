@@ -18,6 +18,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run typecheck
       - run: npm run build
-      - run: npm run test
+      - run: xvfb-run --auto-servernum -- npx tsx test/smoke.ts
         env:
           PI_BROWSER_PROFILE: /tmp/pi-profile-test
+          CI: "true"
